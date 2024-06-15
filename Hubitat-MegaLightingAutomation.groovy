@@ -45,10 +45,7 @@ definition(
     iconX2Url: "")                                   //App Icon2x
 
 preferences {
-    page(name: "mainPage", title: "Setup Light/Motion", uninstall: true) //Page Ids
-    def timedict = ["Minutes" : "60", "Hours" : "3600"] 
-    
-    
+    page(name: "mainPage", title: "Setup Light/Motion", uninstall: true) //Page Id  
 }
 
 ///===================Pages===================\\\
@@ -402,6 +399,7 @@ def luxSubhandler(evt) {
 //Motion Event Handeler add updates
 def motionSubHandler(evt) {
     log.debug "motionSubHandeler: [Called] with $evt | $MotionParams_BypassDevices"
+    def timedict = ["Minutes" : 60, "Hours" : 3600] 
     if(!MotionParams_BypassDevices) overrideDeviceState = "off" else overrideDeviceState = MotionParams_BypassDevices.currentValue("switch") //UPDATE ME MULTI SUPPORT
     if (!LightParams_offLightDevices) LightParams_offLightDevices = LightParams_sceneLightDevices
     if (evt.value == "active") {
@@ -409,7 +407,8 @@ def motionSubHandler(evt) {
         setLights() } 
     else {         
         if (MotionParams_DelaySetting && overrideDeviceState == "off") {
-            multiplyer = 60//imedict.get("$Params_OffTimeUnit")
+            multiplyer = timedict.get(MotionParams_OffTimeUnit)
+            log.debug "multi is $multiplyer, $MotionParams_OffTimeUnit"
             log.debug "motionSubHandeler: Motion Inactive and overide inactive - scheduling off in ${MotionParams_OffTimeValue} ${MotionParams_OffTimeUnit}"
             runIn(MotionParams_OffTimeValue*multiplyer, "delayedOffHandler") }
         else if (!MotionParams_DelaySetting && overrideDeviceState == "off"){
@@ -423,13 +422,14 @@ def motionSubHandler(evt) {
 // For handeling the bypass device procedure
 def bypassedOffHandler(evt) {
     log.debug "bypassedOffHandler: [Called] with $evt"
+    def timedict = ["Minutes" : 60, "Hours" : 3600] 
     if (!LightParams_offLightDevices) LightParams_offLightDevices = LightParams_sceneLightDevices
     motionState = MotionParams_MotionSensors[0].currentValue("motion")            //Get current motion
     if (evt.value == "off" && motionState == "inactive"){                      //If the bypassed device turns off, and motion is inactive turn off lights based on user setting
         unsubscribe(MotionParams_BypassDevices, "switch", "bypassedOffHandler")     //Unsubscrive from this event type as no longer needed
         if (MotionParams_DelaySetting){                                            //Get Delay setting mode (Delayd)
             log.debug "bypassedOffHandler: Motion Inactive - scheduled off in ${MotionParams_OffTimeValue} ${MotionParams_OffTimeUnit}"
-            multiplyer = 60//imedict.get("$Params_OffTimeUnit")
+            multiplyer = timedict.get(MotionParams_OffTimeUnit)
             runIn(MotionParams_OffTimeValue*multiplyer, "delayedOffHandler") }         //Create an event to turn off the lights
         else {                                                                     //Get Delay setting mode (Instant)
             log.debug "motionSubHandeler: Motion inactive - turning off lights now" 
