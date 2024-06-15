@@ -79,7 +79,7 @@ def mainPage() {
         
         //Name
         section(){
-            input "textEntryVar", "text", title: "<font style='font-size:12px; color:#000000'><b>Name this app</b></font>", submitOnChange: true, required: true, defaultValue: "A GODDAM TEST" //Text Entry
+            input "textEntryVar", "text", title: "<font style='font-size:12px; color:#000000'><b>Name this app</b></font>", submitOnChange: true, required: true, defaultValue: "MegaLightingAutomation" //Text Entry
         }
         
         //Motion Section
@@ -314,11 +314,13 @@ def mainPage() {
                 if(userParamMode_UsrHasRoutine) {
                     paragraph "<font style='font-size:$appEnabedSize; color:#047db5'><b><u>[I Have Scenes]</u></b>\n\n\n</font>", width: 7
                     paragraph "<font style='font-size:$appSubSectionSize; color:#0069e0'><b><u>Select Routine to Set During Day Mode\n</u></b></font>"
-                    input name: "userParam_DayLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true 
+                    input name: "userParam_DayLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true, required: true
                     paragraph "<font style='font-size:$appSubSectionSize; color:#0069e0'><b><u>Select Routine to Set During Eve Mode\n</u></b></font>"
-                    input name: "userParam_EveLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true 
+                    input name: "userParam_EveLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true , required: true
                     paragraph "<font style='font-size:$appSubSectionSize; color:#0069e0'><b><u>Select Routine to Set During Night Mode\n</u></b></font>"
-                    input name: "userParam_NightLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true
+                    input name: "userParam_NightLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true, required: true
+                    paragraph "<font style='font-size:$appSubSectionSize; color:#0069e0'><b><u>For Hue Groups - Add the parrent group here\n</u></b></font>" //Hue group fix
+                    input name: "userParam_offLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true , required: false
                 }
                 //Function Disabled
                 /*else {  
@@ -430,7 +432,7 @@ def luxSubhandler(evt) {
 //Motion Event Handeler add updates
 def motionSubHandler(evt) {
     log.debug "motionSubHandeler: [Called] with $evt | $userParam_BypassDevices"
-    overrideDeviceState = userParam_BypassDevices.currentValue("switch") //UPDATE ME MULTI SUPPORT
+    if(!userParam_BypassDevices) overrideDeviceState = "off" else overrideDeviceState = userParam_BypassDevices.currentValue("switch") //UPDATE ME MULTI SUPPORT
     if (evt.value == "active") {
         log.debug "motionSubHandeler: calling setLights()"
         setLights() } 
@@ -440,8 +442,8 @@ def motionSubHandler(evt) {
             log.debug "motionSubHandeler: Motion Inactive - scheduling off in ${userParam_OffTimeValue} ${userParam_OffTimeUnit}"
             runIn(userParam_OffTimeValue*multiplyer, "delayedOffHandler") }
         else if (!userParam_DelaySetting && overrideDeviceState == "off"){
-            log.debug "motionSubHandeler: Motion inactive - turning off lights now"
-            userParam_LightDevices.off() }
+            log.debug "motionSubHandeler: Motion inactive - turning off [$userParam_offLightDevices] now"
+            userParam_offLightDevices.off() }
         else if (overrideDeviceState == "on"){
             log.debug "motionSubHandeler: Motion off blocked by $userParam_BypassDevices subscribing to it & will resume normal opperation once off "
             subscribe(userParam_BypassDevices, "switch", "bypassedOffHandler") } } } //Subscribe to motion events
@@ -467,14 +469,14 @@ def bypassedOffHandler(evt) {
 // For handeling the delayed off Procedure
 def delayedOffHandler() {
     log.debug "delayedOffHandler: Called"
-    if (userParam_BypassDevices[0].currentValue("switch") == "on") {           //If for any reason bypass device is on, cancel
-        log.warn "delayedOffHandler: Caught Exception - bypass active, will not proceed with request." }
-    else if (userParam_BypassDevices[0].currentValue("motion") == "active" ){  //If for any reason motion device is active, cancel
-        log.warn "delayedOffHandler: Caught Exception - motion active, will not proceed with request." }
-    else {                                                                     //Else proceed with request
-        log.info "delayedOffHandler: Turning off lights now"
-        userParam_LightDevices.off() }                                           //Turn devices off 
-
+    if (!userParam_BypassDevices){
+        log.info "delayedOffHandler: Turning off [$userParam_offLightDevices] now"
+        userParam_offLightDevices.off() } 
+    else{
+        if (userParam_BypassDevices.currentValue("switch") == "on") {           //If for any reason bypass device is on, cancel
+            log.warn "delayedOffHandler: Caught Exception - bypass active, will not proceed with request." }
+        else if (userParam_BypassDevices.currentValue("motion") == "active" ){  //If for any reason motion device is active, cancel
+            log.warn "delayedOffHandler: Caught Exception - motion active, will not proceed with request." } } 
 }
 
 ///=================FUNCTIONS=================\\\
@@ -500,7 +502,7 @@ def setLights(){
             unschedule("delayedOffHandler") } 
         else{
             log.info "setLights: $userParam_DayLightDevices to [ON]"
-            userParam_DayLightDevices.on()
+            selectedLights.on()
             unschedule("delayedOffHandler") } }
     else{
         log.debug"setLights: Mode conditon not met to execute" } }
