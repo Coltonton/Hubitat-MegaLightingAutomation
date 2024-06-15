@@ -47,18 +47,20 @@ definition(
 preferences {
     page(name: "mainPage", title: "Setup Light/Motion", uninstall: true) //Page Ids
     def timedict = ["Minutes" : "60", "Hours" : "3600"] 
+    
+    
+}
+
+///===================Pages===================\\\
+def mainPage() {
     def appTitleSize = "52px"
     def appSectionSize = "40px"
     def appSubSectionSize = "30px"
     def appEnabedSize = "22px"
     def appDisabledSize = "16px"
     def onlyInModeList = []
-}
-
-///===================Pages===================\\\
-def mainPage() {
 	dynamicPage(name: "mainPage", title: "<font style='font-size:$appTitleSize; color:#330066'><b>Mega Lighting Automation</b></font>", install: true, uninstall: true) {
-        
+        //InsttallDebugChildren()
         //Name
         section(){
             input "textEntryVar", "text", title: "<font style='font-size:12px; color:#000000'><b>Name this app</b></font>", submitOnChange: true, required: true, defaultValue: "MegaLightingAutomation" //Text Entry
@@ -319,7 +321,8 @@ def mainPage() {
                 paragraph "<font style='font-size:$appSectionSize; color:#3300cc'><b>Standard Light Automation</b></font>"
                 paragraph "<font style='font-size:12px; color:#000000'><b>Please Note: At this time, scene activators/switches are required here\n\n\n</b></font>"
                 input name: "LightParams_sceneLightDevices", type: "capability.switch", title: "Turn on these scenes when motion...", multiple: true
-
+                paragraph "<font style='font-size:$appSubSectionSize; color:#0069e0'><b><u>For Hue Groups - Add the parrent group here\n</u></b></font>" //Hue group fix
+                input name: "LightParams_offLightDevices", type: "capability.switch", title: "With these scenes...", multiple: true , required: false
                 paragraph "<font style='font-size:$appSectionSize; color:#696969'><b><s>\n\n\nIlluminessence Light Automation</s></b></font>\n"
                 paragraph "<font style='font-size:12px; color:#696969'><b>This function is disabled as you need to enable illumination control\n\n</b></font>"
             }     
@@ -399,36 +402,38 @@ def luxSubhandler(evt) {
 //Motion Event Handeler add updates
 def motionSubHandler(evt) {
     log.debug "motionSubHandeler: [Called] with $evt | $MotionParams_BypassDevices"
-    if(!MotionParams_BypassDevices) overrideDeviceState = "off" else overrideDeviceState = Params_BypassDevices.currentValue("switch") //UPDATE ME MULTI SUPPORT
+    if(!MotionParams_BypassDevices) overrideDeviceState = "off" else overrideDeviceState = MotionParams_BypassDevices.currentValue("switch") //UPDATE ME MULTI SUPPORT
+    if (!LightParams_offLightDevices) LightParams_offLightDevices = LightParams_sceneLightDevices
     if (evt.value == "active") {
         log.debug "motionSubHandeler: calling setLights()"
         setLights() } 
     else {         
         if (MotionParams_DelaySetting && overrideDeviceState == "off") {
             multiplyer = 60//imedict.get("$Params_OffTimeUnit")
-            log.debug "motionSubHandeler: Motion Inactive - scheduling off in ${MotionParams_OffTimeValue} ${MotionParams_OffTimeUnit}"
+            log.debug "motionSubHandeler: Motion Inactive and overide inactive - scheduling off in ${MotionParams_OffTimeValue} ${MotionParams_OffTimeUnit}"
             runIn(MotionParams_OffTimeValue*multiplyer, "delayedOffHandler") }
         else if (!MotionParams_DelaySetting && overrideDeviceState == "off"){
             log.debug "motionSubHandeler: Motion inactive - turning off [$LightParams_offLightDevices] now"
             LightParams_offLightDevices.off() }
         else if (overrideDeviceState == "on"){
-            log.debug "motionSubHandeler: Motion off blocked by $Params_BypassDevices subscribing to it & will resume normal opperation once off "
+            log.debug "motionSubHandeler: Motion off blocked by $MotionParams_BypassDevices subscribing to it & will resume normal opperation once off "
             subscribe(MotionParams_BypassDevices, "switch", "bypassedOffHandler") } } } //Subscribe to motion events
 
 
 // For handeling the bypass device procedure
 def bypassedOffHandler(evt) {
     log.debug "bypassedOffHandler: [Called] with $evt"
-    motionState = MotionParams_BypassDevices[0].currentValue("motion")            //Get current motion
+    if (!LightParams_offLightDevices) LightParams_offLightDevices = LightParams_sceneLightDevices
+    motionState = MotionParams_MotionSensors[0].currentValue("motion")            //Get current motion
     if (evt.value == "off" && motionState == "inactive"){                      //If the bypassed device turns off, and motion is inactive turn off lights based on user setting
         unsubscribe(MotionParams_BypassDevices, "switch", "bypassedOffHandler")     //Unsubscrive from this event type as no longer needed
-        if (!MotionParams_DelaySetting){                                            //Get Delay setting mode (Delayd)
-            log.debug "bypassedOffHandler: Motion Inactive - scheduled off in ${MotionParams_OffTimeValue} ${Params_OffTimeUnit}"
+        if (MotionParams_DelaySetting){                                            //Get Delay setting mode (Delayd)
+            log.debug "bypassedOffHandler: Motion Inactive - scheduled off in ${MotionParams_OffTimeValue} ${MotionParams_OffTimeUnit}"
             multiplyer = 60//imedict.get("$Params_OffTimeUnit")
             runIn(MotionParams_OffTimeValue*multiplyer, "delayedOffHandler") }         //Create an event to turn off the lights
         else {                                                                     //Get Delay setting mode (Instant)
             log.debug "motionSubHandeler: Motion inactive - turning off lights now" 
-            LightParams_LightDevices.off()  } }                                         //Turn lights off
+            LightParams_offLightDevices.off()  } }                                         //Turn lights off
     else if (evt.value == "off" && motionState == "active"){                   //If the bypassed device turned off but motion is active, do nothing
         unsubscribe(MotionParams_BypassDevices, "switch", "bypassedOffHandler")     //Unsubscrive from this event type as no longer needed
         log.debug "bypassedOffHandler: Bypass Device now off, motion active, not doing anything" } }
@@ -436,9 +441,14 @@ def bypassedOffHandler(evt) {
 // For handeling the delayed off Procedure
 def delayedOffHandler() {
     log.debug "delayedOffHandler: Called"
+    if (!LightParams_offLightDevices) LightParams_offLightDevices = LightParams_sceneLightDevices
     if (!MotionParams_BypassDevices){
         log.info "delayedOffHandler: Turning off [$Params_offLightDevices] now"
         LightParams_offLightDevices.off() } 
+    else if (MotionParams_BypassDevices.currentValue("switch") == "off"){
+        log.info "delayedOffHandler: Turning off [$Params_offLightDevices] now, bypass inactive"
+        LightParams_offLightDevices.off() 
+    }
     else{
         if (MotionParams_BypassDevices.currentValue("switch") == "on") {           //If for any reason bypass device is on, cancel
             log.warn "delayedOffHandler: Caught Exception - bypass active, will not proceed with request." }
@@ -457,10 +467,12 @@ def averageLux() {
 //For setting the lights (Illumination based or static)
 def setLights(){
     if (checkLocationModeValid(userParamMode_OnlyInMode) == true) {
-        if (IlumParams_IllumSetting){
+        log.debug"IlumParams_IllumSetting $IlumParams_IllumSetting"
+        if (IlumParams_IllumSetting == true){
             def sceneLightLookup = ["D" : LightParams_DayLightDevices, "E" : LightParams_EveLightDevices, "N" : LightParams_NightLightDevices]
             def globalLightModeVar = getGlobalVar("LightMode").value
             selectedLights = sceneLightLookup.get(globalLightModeVar)
+            log.debug"s$electedLights"
             if (selectedLights){
                 log.debug"setLights: Setting $selectedLights to [ON]"
                 selectedLights.on() } 
@@ -468,8 +480,8 @@ def setLights(){
                log.warn "setLights: DID NOT MATCH A SETTING" }
             unschedule("delayedOffHandler") } 
         else{
-            log.info "setLights: $IlumParams_DayLightDevices to [ON]"
-            selectedLights.on()
+            log.info "setLights: $LightParams_sceneLightDevices to [ON]"
+            LightParams_sceneLightDevices.on()
             unschedule("delayedOffHandler") } }
     else{
         log.debug"setLights: Mode conditon not met to execute" } }
